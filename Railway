@@ -1,0 +1,110 @@
+import RPi.GPIO as GPIO
+import time
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+# Set GPIO Mode
+GPIO.setmode(GPIO.BCM)
+
+# Define GPIO pins for the ultrasonic sensor
+GPIO_TRIGGER = 23
+GPIO_ECHO = 24
+
+# Set GPIO direction (IN / OUT)
+GPIO.setup(GPIO_TRIGGER, GPIO.OUT)
+GPIO.setup(GPIO_ECHO, GPIO.IN)
+
+# Train data with initial dummy values for Tippu Express and Shatabdi Express
+trains = {
+    "Shatabdi Express": 0,
+    "Tippu Express": 14,
+    "Rajdhani Express": 93
+}
+
+# Function to measure distance
+def measure_distance():
+    # Set Trigger to HIGH
+    GPIO.output(GPIO_TRIGGER, True)
+
+    # Set Trigger after 0.01ms to LOW
+    time.sleep(0.00001)
+    GPIO.output(GPIO_TRIGGER, False)
+
+    start_time = time.time()
+    stop_time = time.time()
+
+    # Save start_time
+    while GPIO.input(GPIO_ECHO) == 0:
+        start_time = time.time()
+
+    # Save time of arrival
+    while GPIO.input(GPIO_ECHO) == 1:
+        stop_time = time.time()
+
+    # Time difference between start and arrival
+    time_elapsed = stop_time - start_time
+    # Multiply with the sonic speed (34300 cm/s)
+    # and divide by 2 (for round trip)
+    distance = (time_elapsed * 34300) / 2
+
+    return distance
+
+# Function to send email
+def send_email(subject, body):
+    sender_email = "an3315735@gmail.com"
+    receiver_email = "20cse0055@gmail.com"
+   
+    msg = MIMEMultipart()
+    msg['From'] = sender_email
+    msg['To'] = receiver_email
+    msg['Subject'] = subject
+
+    msg.attach(MIMEText(body, 'plain'))
+
+    try:
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(sender_email, password)
+        text = msg.as_string()
+        server.sendmail(sender_email, receiver_email, text)
+        server.quit()
+        print("Email sent successfully!")
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+
+# Main function
+def main():
+    try:
+        while True:
+            # Measure distance for Shatabdi Express
+            distance = measure_distance()
+            print(f"Measured Distance for Shatabdi Express = {distance:.1f} cm")
+
+            # Assuming the dustbin height is 100 cm
+            dustbin_height = 100.0
+            waste_level = ((dustbin_height - distance) / dustbin_height) * 100
+            trains["Shatabdi Express"] = waste_level
+            print(f"Waste Level for Shatabdi Express = {waste_level:.1f}%")
+
+            if waste_level > 90:
+                send_email(
+                    body=f"The dustbin level in Shatabdi Express has reached {waste_level:.1f}% at Mysuru Jn station."
+                )
+
+            # Simulate dummy data for other trains
+            trains["Tippu Express"] = 14  # Dummy data
+            trains["Rajdhani Express"] = 93  # Dummy data
+
+            print("Current Waste Levels:")
+            for train, level in trains.items():
+                print(f"{train}: {level}%")
+
+            time.sleep(60)  # Wait for 1 minute before the next measurement
+
+    except KeyboardInterrupt:
+        print("Measurement stopped by user")
+        GPIO.cleanup()
+
+if __name__ == "__main__":
+    main()
